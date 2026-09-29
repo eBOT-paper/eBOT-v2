@@ -5,3 +5,4 @@ agg_common.h
 agg_xdp_usr
 *.o
 *.so
+.vscode
