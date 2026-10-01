@@ -348,6 +348,13 @@ STYLE = {
     "ALEPH": {"color": "#eda100", "marker": "D"},
 }
 
+# The proposed method is emphasized: thicker solid line drawn on top;
+# baselines are thinner and dashed.
+HIGHLIGHT = "eBOT"
+HIGHLIGHT_STYLE = {"linewidth": 2.6, "markersize": 6.5, "zorder": 5}
+BASELINE_STYLE = {"linewidth": 1.4, "markersize": 4.5, "zorder": 3,
+                  "linestyle": "--"}
+
 # Paper figures: file name -> (column, std column, y label, log scale)
 FIGURES = {
     "aggregation_time_vs_sigma": (
@@ -389,12 +396,24 @@ def plot_metric(
             data[column],
             yerr=None if yerr_column is None else data[yerr_column],
             label=architecture,
-            linewidth=2,
-            markersize=5,
             capsize=3,
             elinewidth=1,
             **STYLE[architecture],
+            **(HIGHLIGHT_STYLE if architecture == HIGHLIGHT
+               else BASELINE_STYLE),
         )
+
+        # Keep baseline markers visible where they sit on the eBOT line
+        if architecture != HIGHLIGHT:
+            ax.plot(
+                data[x], data[column],
+                linestyle="none",
+                markersize=BASELINE_STYLE["markersize"],
+                markeredgecolor="white",
+                markeredgewidth=0.6,
+                zorder=HIGHLIGHT_STYLE["zorder"] + 1,
+                **STYLE[architecture],
+            )
 
     if log:
         ax.set_yscale("log")
@@ -415,7 +434,10 @@ def plot_metric(
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
 
-    ax.legend(frameon=False, ncol=2, fontsize=7.5)
+    legend = ax.legend(frameon=False, ncol=2, fontsize=7.5)
+    for text in legend.get_texts():
+        if text.get_text() == HIGHLIGHT:
+            text.set_fontweight("bold")
     fig.tight_layout()
 
     return fig
