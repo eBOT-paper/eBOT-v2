@@ -47,6 +47,10 @@ SWEEP_SIGMAS = [0.0, 0.10, 0.20]
 
 RANDOM_SEED = 42
 
+# Separate stream for ALEPH's randomized clustering, so the bandwidth
+# draws (and every other architecture's results) do not depend on it
+ALEPH_RNG = np.random.default_rng(RANDOM_SEED + 1)
+
 # Output folders, relative to this file
 HERE = os.path.dirname(os.path.abspath(__file__))
 RESULTS_DIR = os.path.join(HERE, "results")
@@ -92,15 +96,18 @@ def communication_time(beta):
     return G / beta
 
 
-def calculate_time(B, degrees, depths):
+def calculate_time(B, degrees, depths, volume=1.0):
     """
-    T = G / min_i b_i + tau * D,  where b_i = B_i / (degree_i + 1).
+    T = volume * G / min_i b_i + tau * D,  where b_i = B_i / (degree_i + 1).
+
+    volume is the fraction of G each node transmits: 1 for trees,
+    (N - 1) / N for the reduce-scatter phase of Ring All-Reduce.
     """
 
     beta = np.min(B / (degrees + 1))
     D = np.max(depths)
 
-    comm = communication_time(beta)
+    comm = volume * communication_time(beta)
     comp = tau * D
 
     return {
@@ -196,11 +203,12 @@ def build_ps(B):
 
 def build_ring(B):
     """
-    Ring All-Reduce.
+    Ring All-Reduce (reduce-scatter phase).
 
     Every node has two incident links. The ring has no hierarchical
     aggregation, so its depth is modelled as the N - 1 sequential
-    communication steps of the classical ring algorithm.
+    communication steps of the classical ring algorithm. Each node
+    transmits (N - 1) / N of the gradient (see VOLUME).
     """
 
     n = len(B)
@@ -213,34 +221,106 @@ def build_ring(B):
 
 def build_aleph(B):
     """
-    Simplified three-layer hierarchical parameter-server topology.
+    ALEPH: M-WCHA, MDS-based worker clustering (Yang et al., ToN 2024,
+    Sec. 4.1, Algorithm 1).
 
-    Layer 0: root / parameter server
-    Layer 1: sqrt(N) aggregators (highest bandwidth after the root)
-    Layer 2: workers, assigned round-robin to aggregators
+    The highest-bandwidth node is the parameter server (PS); the rest
+    are workers. Workers send at b = min_w B_w, so aggregator w can serve
+    g_w = floor(B_w / b - 1) other workers (computing resources are not
+    binding in this simulation). Workers are fully connected, as in
+    ALEPH's non-blocking datacenter setting. Each round:
+
+      1. g_bar_w = min(g_w, |unclustered neighbours|); g_hat_w is
+         g_bar_w rounded up to a power of two (Eqs. 2-3).
+      2. An unclustered worker is a candidate aggregator (CA) if no
+         unclustered worker has a larger g_hat (2-hop rule).
+      3. alpha(w) = g_bar_w / |unclustered neighbours| (Eq. 5),
+         beta(w') = sum of alpha over adjacent CAs (Eq. 6). Each CA is
+         selected with probability 1 / median(beta over its unclustered
+         neighbours) and then takes each unclustered neighbour with
+         probability alpha(w), up to g_w members.
+
+    If a round selects no aggregator, the remaining workers send directly
+    to the PS. Two interpretations: the 2-hop comparison ignores already
+    clustered workers (otherwise an earlier aggregator could block all
+    later CAs), and cluster size is capped at g_w to respect constraint
+    (1) of ALEPH, since sampling with probability alpha can overshoot it.
     """
 
     n = len(B)
-    order = np.argsort(-B)
+    ps = int(np.argmax(B))
+    workers = [w for w in range(n) if w != ps]
 
-    root = order[0]
-    num_aggregators = max(1, int(np.sqrt(n)))
-    aggregators = order[1:num_aggregators + 1]
-    workers = order[num_aggregators + 1:]
+    b = B[workers].min()
+    capacity = {w: int(np.floor(B[w] / b - 1 + 1e-9)) for w in workers}
+
+    unclustered = set(workers)
+    clusters = {}
+
+    while unclustered:
+
+        # Step 1: aggregation capacity (complete graph: every unclustered
+        # worker, including w itself, is a neighbour of w)
+        g_bar = {w: min(capacity[w], len(unclustered)) for w in unclustered}
+        g_hat = {w: 1 << max(0, int(np.ceil(np.log2(max(g, 1)))))
+                 for w, g in g_bar.items()}
+
+        # Step 2: candidate aggregators
+        top = max(g_hat.values())
+        cas = [w for w in unclustered if g_hat[w] == top and g_bar[w] > 0]
+
+        if not cas:
+            break
+
+        # Step 3: clustering. Every CA is adjacent to every worker, so
+        # beta(w') is the same for all w' and equals its own median m.
+        alpha = {w: g_bar[w] / len(unclustered) for w in cas}
+        m = sum(alpha.values())
+
+        selected = False
+
+        for w in cas:
+
+            if w not in unclustered:
+                continue
+
+            if ALEPH_RNG.random() >= min(1.0, 1.0 / m):
+                continue
+
+            selected = True
+            members = [w]
+            unclustered.discard(w)
+
+            for w2 in sorted(unclustered):
+                if len(members) - 1 >= capacity[w]:
+                    break
+                if ALEPH_RNG.random() < alpha[w]:
+                    members.append(w2)
+
+            unclustered.difference_update(members)
+            clusters[w] = members
+
+        if not selected:
+            break
 
     degrees = np.zeros(n, dtype=int)
     depths = np.zeros(n, dtype=int)
 
-    # Root -> aggregators
-    degrees[root] += len(aggregators)
-    degrees[aggregators] += 1
-    depths[aggregators] = 1
+    # Aggregators -> PS, members -> aggregators
+    for agg, members in clusters.items():
+        degrees[ps] += 1
+        degrees[agg] += 1
+        depths[agg] = 1
+        for w in members[1:]:
+            degrees[w] += 1
+            degrees[agg] += 1
+            depths[w] = 2
 
-    # Workers -> aggregators, in node-index order
-    for idx, worker in enumerate(np.sort(workers)):
-        degrees[worker] += 1
-        degrees[aggregators[idx % len(aggregators)]] += 1
-        depths[worker] = 2
+    # Unclustered workers send directly to the PS
+    for w in unclustered:
+        degrees[ps] += 1
+        degrees[w] += 1
+        depths[w] = 1
 
     return degrees, depths
 
@@ -250,6 +330,11 @@ ARCHITECTURES = {
     "PS": build_ps,
     "Ring": build_ring,
     "ALEPH": build_aleph,
+}
+
+# Fraction of G transmitted per node, as a function of N (default 1)
+VOLUME = {
+    "Ring": lambda n: (n - 1) / n,
 }
 
 
@@ -268,7 +353,9 @@ def run_trial(sigma, rng, n=N):
         {
             "sigma": sigma,
             "architecture": name,
-            **calculate_time(B, *build(B)),
+            **calculate_time(
+                B, *build(B), volume=VOLUME.get(name, lambda n: 1.0)(n)
+            ),
         }
         for name, build in ARCHITECTURES.items()
     ]
@@ -279,7 +366,9 @@ def run_simulation(sigmas=SIGMAS, trials=NUM_TRIALS, seed=RANDOM_SEED):
     Returns one row per (sigma, trial, architecture).
     """
 
+    global ALEPH_RNG
     rng = np.random.default_rng(seed)
+    ALEPH_RNG = np.random.default_rng(seed + 1)
 
     rows = []
 
@@ -302,7 +391,9 @@ def run_node_sweep(
     Returns one row per (N, sigma, trial, architecture).
     """
 
+    global ALEPH_RNG
     rng = np.random.default_rng(seed)
+    ALEPH_RNG = np.random.default_rng(seed + 1)
 
     rows = []
 
