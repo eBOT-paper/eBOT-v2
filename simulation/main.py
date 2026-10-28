@@ -4,7 +4,7 @@ Aggregation-time simulation: eBOT vs. PS, Ring All-Reduce and ALEPH.
 For every sigma, draws NUM_TRIALS random bandwidth vectors, builds each
 topology, and scores it with
 
-    T = G / min_i (B_i / (deg_i + 1)) + tau * D
+    T = G / min_i (B_i / deg_i) + tau * D
 
 Usage:
     python main.py                 # run, save CSVs in results/ and PNGs in images/
@@ -96,15 +96,25 @@ def communication_time(beta):
     return G / beta
 
 
+def bottleneck_bandwidth(B, degrees):
+    """
+    min_i B_i / degree_i over nodes with at least one link.
+    """
+
+    linked = degrees > 0
+
+    return np.min(B[linked] / degrees[linked])
+
+
 def calculate_time(B, degrees, depths, volume=1.0):
     """
-    T = volume * G / min_i b_i + tau * D,  where b_i = B_i / (degree_i + 1).
+    T = volume * G / min_i b_i + tau * D,  where b_i = B_i / degree_i.
 
     volume is the fraction of G each node transmits: 1 for trees,
     (N - 1) / N for the reduce-scatter phase of Ring All-Reduce.
     """
 
-    beta = np.min(B / (degrees + 1))
+    beta = bottleneck_bandwidth(B, degrees)
     D = np.max(depths)
 
     comm = volume * communication_time(beta)
@@ -162,7 +172,7 @@ def build_ebot(B):
             temp_degrees[i] += 1
             temp_degrees[j] += 1
 
-            beta = np.min(B / (temp_degrees + 1))
+            beta = bottleneck_bandwidth(B, temp_degrees)
             D = max(depths.max(), depths[j] + 1)
 
             cost = communication_time(beta) + tau * D
