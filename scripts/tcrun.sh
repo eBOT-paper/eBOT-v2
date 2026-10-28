@@ -1,7 +1,7 @@
 #!/bin/bash
 
 filedir=`dirname $0`
-filename=eBOT/agg_tc
+filename=ebpf/agg_tc
 ifnet=$1
 
 # install tc program

@@ -6,6 +6,29 @@ This setup has been tested on **Ubuntu 22.04.3 LTS** with **Linux 5.15.0-125-gen
 
 ---
 
+## Project Structure
+
+```
+.
+├── agent.py              # Agent running on each node (receives config/commands from the server)
+├── server.py             # Coordinator server
+├── worker.py             # Training entry point (eBPF / Torch DDP / Torch TCP)
+├── ebot/                 # Python package
+│   ├── models.py         #   Model definitions
+│   ├── utils.py          #   Config loading, data preparation, evaluation
+│   └── workers/          #   Worker implementations per communication backend
+├── ebpf/                 # eBPF programs (XDP/TC), user-space loader and shared map library
+├── configs/              # main_config.json (+ generated system_config.json / local_config.json)
+├── tools/                # Helper scripts (system config generation, SSH config, model info)
+├── scripts/              # Shell scripts for setup, running and cleaning eBPF programs
+├── simulation/           # Aggregation-time simulation, solver, results and plots
+└── docs/                 # Appendix
+```
+
+All commands below are run from the repository root.
+
+---
+
 ## Automatic Setup
 
 On each node, run the following command to install all required dependencies for running eBPF programs:
@@ -30,14 +53,14 @@ pip3 install websockets
 
 ## Topology Configuration
 
-1. Edit the node description in `main_config.json`.
+1. Edit the node description in `configs/main_config.json`.
 2. Generate the system configuration file with:
 
    ```bash
-   python3 gen_system_config.py
+   python3 -m tools.gen_system_config
    ```
 
-   This will create or update `system_config.json`.
+   This will create or update `configs/system_config.json` and `.env`.
 
 ---
 
@@ -45,7 +68,7 @@ pip3 install websockets
 
 ### Coordinator Node
 
-1. Edit the configuration file `main_config.json` to assign communication jobs.
+1. Edit the configuration file `configs/main_config.json` to assign communication jobs.
 2. Start the server with:
 
    ```bash

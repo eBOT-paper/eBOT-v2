@@ -1,4 +1,4 @@
-from models import ConvNet, SimpleCNN, ResNet18, ResNet52
+from ebot.models import ConvNet, SimpleCNN, ResNet18, ResNet52
 import torchvision.models as models
 
 model = ResNet52()

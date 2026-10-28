@@ -9,11 +9,11 @@ import numpy as np
 
 from ctypes import cdll, cast, c_bool, c_int, c_void_p, c_char_p,\
     Structure, POINTER
-from utils import evaluate, load_config, prepare_data
-from workers import BaseWorker
-from models import BaseModel
+from ebot.utils import evaluate, load_config, prepare_data
+from ebot.workers import BaseWorker
+from ebot.models import BaseModel
 
-config = load_config("local_config.json")
+config = load_config("configs/local_config.json")
 
 WORKER_NUM = config["worker_num"]
 GRADIENT_SIZE = config["gradient_size"]
@@ -36,7 +36,7 @@ class AggregatorMap(Structure):
 
 class EbpfWorker(BaseWorker):
     
-    def __init__(self, model: BaseModel, clib_path: str = "./eBOT/agg_map_lib.so"):
+    def __init__(self, model: BaseModel, clib_path: str = "./ebpf/agg_map_lib.so"):
         super().__init__(model)
         self._clib = cdll.LoadLibrary(clib_path)
         self._clib.get_aggmap.argtypes = [c_int, c_int]

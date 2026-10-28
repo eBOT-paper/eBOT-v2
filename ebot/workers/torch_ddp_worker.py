@@ -1,8 +1,8 @@
 import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
-from workers import BaseWorker
-from models import BaseModel
+from ebot.workers import BaseWorker
+from ebot.models import BaseModel
 
 
 class TorchDDPWorker(BaseWorker):

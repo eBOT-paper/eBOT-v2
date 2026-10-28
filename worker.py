@@ -6,16 +6,16 @@ import torch.nn as nn
 import torch.optim as optim
 from dotenv import load_dotenv
 
-from utils import evaluate, load_config, prepare_data
-from models import ConvNet, SimpleCNN, ResNet18, ResNet52
-from workers import EbpfWorker, TorchDDPWorker, TorchTCPWorker
+from ebot.utils import evaluate, load_config, prepare_data
+from ebot.models import ConvNet, SimpleCNN, ResNet18, ResNet52
+from ebot.workers import EbpfWorker, TorchDDPWorker, TorchTCPWorker
 
 load_dotenv()
 
 master_ip = os.getenv("COORD_IP")
 master_port = 29500
 
-config = load_config("local_config.json")
+config = load_config("configs/local_config.json")
 
 rank = config["id"]
 world_size = config["worker_num"]

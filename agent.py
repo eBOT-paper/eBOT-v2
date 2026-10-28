@@ -7,7 +7,7 @@ import subprocess
 import jinja2
 import ipaddress
 from dotenv import load_dotenv
-from utils import load_config
+from ebot.utils import load_config
 
 load_dotenv()
 
@@ -23,7 +23,7 @@ def parse_mac(mac: str) -> str:
     return ",".join(["0x"+seg for seg in mac.split(":")])
 
 
-def write_local_config(data: dict, config_path: str = "local_config.json"):
+def write_local_config(data: dict, config_path: str = "configs/local_config.json"):
     content = json.dumps(data, indent=4)
     with open(config_path, "w") as f:
         f.write(content)
@@ -31,8 +31,8 @@ def write_local_config(data: dict, config_path: str = "local_config.json"):
 
 def write_agg_config(
     data: dict,
-    template_path: str = "eBOT/agg_common.h.tmpl", 
-    output_path: str = "eBOT/agg_common.h"
+    template_path: str = "ebpf/agg_common.h.tmpl", 
+    output_path: str = "ebpf/agg_common.h"
 ): 
     input_data = {
         "dummy_ip": ipv4_to_hex(data["dummy_ip"]),
@@ -91,7 +91,7 @@ async def run_ebpf_progs():
         print(f"Error running program: {e}")
 
 async def run_train_progs(prog_type: str):
-    config = load_config("local_config.json")
+    config = load_config("configs/local_config.json")
     if not config['children']:
         time.sleep(5)
     try:       

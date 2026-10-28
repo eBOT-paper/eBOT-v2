@@ -22,5 +22,5 @@ sudo xdp-loader unload --all $ifnet
 echo sudo rm /sys/fs/bpf/*_map
 sudo rm /sys/fs/bpf/*_map
 
-echo sudo rm $fdir/../eBOT/*.o $fdir/../eBOT/*.so
-sudo rm $fdir/../eBOT/*.o $fdir/../eBOT/*.so
+echo sudo rm $fdir/../ebpf/*.o $fdir/../ebpf/*.so
+sudo rm $fdir/../ebpf/*.o $fdir/../ebpf/*.so

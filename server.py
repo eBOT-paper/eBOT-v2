@@ -4,14 +4,14 @@ import websockets
 import json
 import os
 from dotenv import load_dotenv
-from utils import load_config
+from ebot.utils import load_config
 
 load_dotenv()
 
 COORD_IP = os.getenv("COORD_IP")
 COORD_PORT = os.getenv("COORD_PORT")
 
-config = load_config("system_config.json")
+config = load_config("configs/system_config.json")
 clients = set()
 
 
@@ -41,7 +41,7 @@ async def broadcast(event_type: str, data: any = ""):
 
 
 async def multicast(event_type: str, data: any = ""):
-    config = load_config("system_config.json")
+    config = load_config("configs/system_config.json")
     allowed_addrs = set(config.get("clients", {}).keys())
     
     targets = [
@@ -52,7 +52,7 @@ async def multicast(event_type: str, data: any = ""):
 
 
 async def update_local_config():
-    config = load_config("system_config.json")
+    config = load_config("configs/system_config.json")
     train_cfg = config.get("train_config", {})
     
     tasks = []

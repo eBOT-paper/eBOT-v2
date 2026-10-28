@@ -16,8 +16,8 @@ ifnet=ens3
 echo -e "\n${GREEN}./scripts/clean.sh${RESET} $ifnet"
 $filedir/clean.sh $ifnet
 
-echo -e "\n${GREEN}make -C $filedir/../eBOT${RESET}"
-make -C $filedir/../eBOT
+echo -e "\n${GREEN}make -C $filedir/../ebpf${RESET}"
+make -C $filedir/../ebpf
 
 echo -e "\n${GREEN}./scripts/xdprun.sh${RESET} $ifnet"
 $filedir/xdprun.sh $ifnet

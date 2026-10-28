@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from models import BaseModel
+from ebot.models import BaseModel
 
 
 class BaseWorker(ABC):

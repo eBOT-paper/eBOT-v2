@@ -1,7 +1,6 @@
 import json
-import random
 from typing import Optional
-from utils import load_config
+from ebot.utils import load_config
 
 
 def load_nodes(config_path: str) -> tuple:
@@ -11,24 +10,45 @@ def load_nodes(config_path: str) -> tuple:
     return config, nodes
 
 
-def run_bate_algorithm(nodes: list) -> dict:
-    N = len(nodes)
-    B = [random.randint(10, 10) for _ in range(N)]
-    B.sort(reverse=True)
-    
-    Bnorm = [0] * N
-    graph = {i: [] for i in range(N)}
+G = 1000.0
+TAU = 0.1
+DEFAULT_BANDWIDTH = 10.0
 
-    def degree(node: int) -> int:
-        return sum(1 for u, vs in graph.items() if u == node for _ in vs) + \
-               sum(1 for vs in graph.values() for v in vs if v == node)
 
-    Bnorm[0] = B[0]
-    for v in range(1, N):
-        u = Bnorm.index(max(Bnorm))
-        graph[u].append(v)
-        Bnorm[u] = B[u] / (degree(u) + 1)
-        Bnorm[v] = B[v] / (degree(v) + 1)
+def run_ebot_algorithm(nodes: list) -> dict:
+    B = {node["id"]: float(node.get("bandwidth", DEFAULT_BANDWIDTH)) for node in nodes}
+    order = sorted(B, key=lambda i: B[i], reverse=True)
+
+    graph = {i: [] for i in order}
+    if not order:
+        return graph
+
+    degrees = {i: 0 for i in order}
+    depths = {i: 0 for i in order}
+    selected = [order[0]]
+
+    for i in order[1:]:
+        best_parent = None
+        best_cost = float("inf")
+
+        for j in selected:
+            temp_degrees = dict(degrees)
+            temp_degrees[i] += 1
+            temp_degrees[j] += 1
+
+            beta = min(B[k] / (temp_degrees[k] + 1) for k in order)
+            D = max(max(depths[k] for k in selected), depths[j] + 1)
+
+            cost = G / beta + TAU * D
+            if cost < best_cost:
+                best_cost = cost
+                best_parent = j
+
+        graph[best_parent].append(i)
+        degrees[i] += 1
+        degrees[best_parent] += 1
+        depths[i] = depths[best_parent] + 1
+        selected.append(i)
 
     return graph
 
@@ -76,7 +96,7 @@ def save_configs(config: dict, clients: dict):
     config["clients"] = clients
     del config["node_config"]
 
-    with open("system_config.json", "w") as f:
+    with open("configs/system_config.json", "w") as f:
         f.write(json.dumps(config, indent=4))
 
     coord_ip = config["coord_config"]["ip"]
@@ -90,8 +110,8 @@ def save_configs(config: dict, clients: dict):
 
 
 def main():
-    config, nodes = load_nodes("main_config.json")
-    graph = run_bate_algorithm(nodes)
+    config, nodes = load_nodes("configs/main_config.json")
+    graph = run_ebot_algorithm(nodes)
     print("Generated graph:", graph)
 
     clients = build_clients(nodes, graph)
